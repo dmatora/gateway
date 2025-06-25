@@ -1,5 +1,7 @@
 import { FastifyInstance } from 'fastify';
+import fse from 'fs-extra';
 
+import { Ethereum, TokenInfo } from '../chains/ethereum/ethereum';
 import { fromFractionString, toFractionString } from '../services/base';
 import { ConfigManagerV2 } from '../services/config-manager-v2';
 import { logger } from '../services/logger';
@@ -93,6 +95,163 @@ export const updateConfig = (
     logger.error(`Failed to update configuration: ${error.message}`);
     throw fastify.httpErrors.internalServerError(
       `Failed to update configuration: ${error.message}`,
+    );
+  }
+};
+
+export const addDefaultToken = async (
+  fastify: FastifyInstance,
+  chain: string,
+  network: string,
+  name: string,
+  symbol: string,
+  address: string,
+  decimals: number,
+): Promise<void> => {
+  // All EVM-compatible networks are configured under the 'ethereum' namespace.
+  const configChainName = 'ethereum';
+
+  // Validate that the provided network is a configured EVM network.
+  const availableNetworks = Object.keys(
+    ConfigManagerV2.getInstance().get(`${configChainName}.networks`) || {},
+  );
+  if (!availableNetworks.includes(network)) {
+    throw fastify.httpErrors.badRequest(
+      `Network '${network}' is not a supported Ethereum-based network. Supported networks are: ${availableNetworks.join(', ')}`,
+    );
+  }
+
+  // Get the token list file path from the config.
+  const tokenListSourcePath = ConfigManagerV2.getInstance().get(
+    `${configChainName}.networks.${network}.tokenListSource`,
+  );
+
+  if (!tokenListSourcePath) {
+    throw fastify.httpErrors.internalServerError(
+      `tokenListSource not configured for network '${network}'.`,
+    );
+  }
+
+  try {
+    // Read the existing token list
+    let tokenList: TokenInfo[] = [];
+    if (await fse.pathExists(tokenListSourcePath)) {
+      const fileContent = await fse.readFile(tokenListSourcePath, 'utf8');
+      tokenList = JSON.parse(fileContent);
+    }
+
+    // Check for duplicates (by address or symbol)
+    const normalizedAddress = address.toLowerCase();
+    const normalizedSymbol = symbol.toUpperCase();
+    const existingToken = tokenList.find(
+      (t) =>
+        t.address.toLowerCase() === normalizedAddress ||
+        t.symbol.toUpperCase() === normalizedSymbol,
+    );
+
+    if (existingToken) {
+      throw fastify.httpErrors.conflict(
+        `Token with address ${address} or symbol ${symbol} already exists.`,
+      );
+    }
+
+    // Get the Ethereum instance for the specified network to retrieve the chainId.
+    const ethereum = await Ethereum.getInstance(network);
+    const chainId = ethereum.chainId;
+
+    // Add the new token
+    const newToken: TokenInfo = {
+      chainId,
+      address,
+      name,
+      symbol,
+      decimals,
+    };
+    tokenList.push(newToken);
+
+    // Write the updated list back to the file
+    await fse.writeFile(
+      tokenListSourcePath,
+      JSON.stringify(tokenList, null, 2),
+    );
+
+    // Reload the tokens in the Ethereum instance to make it available immediately
+    await ethereum.loadTokens(tokenListSourcePath, ethereum.tokenListType);
+
+    logger.info(`Added token ${symbol} (${address}) to ${chain}/${network}.`);
+  } catch (error) {
+    logger.error(`Failed to add default token: ${error.message}`);
+    if (error.statusCode) throw error;
+    throw fastify.httpErrors.internalServerError(
+      `Failed to add token: ${error.message}`,
+    );
+  }
+};
+
+export const removeDefaultToken = async (
+  fastify: FastifyInstance,
+  chain: string,
+  network: string,
+  tokenToRemove: string,
+): Promise<void> => {
+  // All EVM-compatible networks are configured under the 'ethereum' namespace.
+  const configChainName = 'ethereum';
+
+  // Validate that the provided network is a configured EVM network.
+  const availableNetworks = Object.keys(
+    ConfigManagerV2.getInstance().get(`${configChainName}.networks`) || {},
+  );
+  if (!availableNetworks.includes(network)) {
+    throw fastify.httpErrors.badRequest(
+      `Network '${network}' is not a supported Ethereum-based network. Supported networks are: ${availableNetworks.join(', ')}`,
+    );
+  }
+
+  const tokenListSourcePath = ConfigManagerV2.getInstance().get(
+    `${configChainName}.networks.${network}.tokenListSource`,
+  );
+
+  if (!tokenListSourcePath || !(await fse.pathExists(tokenListSourcePath))) {
+    throw fastify.httpErrors.internalServerError(
+      `tokenListSource not configured or found for network '${network}'.`,
+    );
+  }
+
+  try {
+    const fileContent = await fse.readFile(tokenListSourcePath, 'utf8');
+    const tokenList: TokenInfo[] = JSON.parse(fileContent);
+
+    const normalizedTokenToRemove = tokenToRemove.toLowerCase();
+    const initialLength = tokenList.length;
+
+    const updatedTokenList = tokenList.filter(
+      (t) =>
+        t.address.toLowerCase() !== normalizedTokenToRemove &&
+        t.symbol.toLowerCase() !== normalizedTokenToRemove,
+    );
+
+    if (updatedTokenList.length === initialLength) {
+      throw fastify.httpErrors.notFound(
+        `Token ${tokenToRemove} not found in the list.`,
+      );
+    }
+
+    // Write the updated list back
+    await fse.writeFile(
+      tokenListSourcePath,
+      JSON.stringify(updatedTokenList, null, 2),
+    );
+
+    // Reload the tokens in the Ethereum instance
+    const ethereum = await Ethereum.getInstance(network);
+    await ethereum.loadTokens(tokenListSourcePath, ethereum.tokenListType);
+
+    logger.info(`Removed token ${tokenToRemove} from ${chain}/${network}.`);
+  } catch (error) {
+    logger.error(`Failed to remove default token: ${error.message}`);
+    if (error.statusCode) throw error;
+    throw fastify.httpErrors.internalServerError(
+      `Failed to remove token: ${error.message}`,
     );
   }
 };

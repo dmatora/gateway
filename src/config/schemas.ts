@@ -62,6 +62,63 @@ export const DefaultPoolResponseSchema = Type.Object({
 export type DefaultPoolRequest = Static<typeof DefaultPoolRequestSchema>;
 export type DefaultPoolResponse = Static<typeof DefaultPoolResponseSchema>;
 
+// Default tokens schemas
+export const DefaultTokenRequestSchema = Type.Object({
+  chain: Type.String({
+    description:
+      "The blockchain chain name. For EVM-compatible chains, this is typically 'ethereum'. The `network` field is used to specify the exact chain.",
+    examples: ['ethereum'],
+  }),
+  network: Type.String({
+    description:
+      'The network name to add the token to (e.g., mainnet, arbitrum, base, polygon).',
+    examples: ['mainnet', 'base', 'arbitrum', 'polygon'],
+  }),
+  name: Type.String({
+    description: 'The token symbol',
+    examples: ['Tsunami'],
+  }),
+  symbol: Type.String({
+    description: 'The token symbol',
+    examples: ['NAMI'],
+  }),
+  address: Type.String({
+    description: 'The token contract address',
+    examples: ['0x7EB4DB4dDDB16A329c5aDE17a8a0178331267E28'],
+  }),
+  decimals: Type.Number({
+    description: 'The number of decimals for the token',
+    examples: [18],
+  }),
+});
+
+export const DefaultTokenResponseSchema = Type.Object({
+  message: Type.String({ description: 'Status message' }),
+});
+
+export const RemoveDefaultTokenRequestSchema = Type.Object({
+  chain: Type.String({
+    description:
+      "The blockchain chain name. For EVM-compatible chains, this is typically 'ethereum'. The `network` field is used for lookup.",
+    examples: ['ethereum'],
+  }),
+  network: Type.String({
+    description:
+      'The network name to remove the token from (e.g., mainnet, base, arbitrum).',
+    examples: ['mainnet', 'base', 'arbitrum'],
+  }),
+  token: Type.String({
+    description: 'The token symbol or address to remove',
+    examples: ['NAMI', '0x7EB4DB4dDDB16A329c5aDE17a8a0178331267E28'],
+  }),
+});
+
+export type DefaultTokenRequest = Static<typeof DefaultTokenRequestSchema>;
+export type DefaultTokenResponse = Static<typeof DefaultTokenResponseSchema>;
+export type RemoveDefaultTokenRequest = Static<
+  typeof RemoveDefaultTokenRequestSchema
+>;
+
 // Default pool list schema
 export const DefaultPoolListSchema = Type.Record(
   Type.String({
