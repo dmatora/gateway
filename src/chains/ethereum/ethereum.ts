@@ -212,6 +212,7 @@ export class Ethereum {
       if (this.tokenList) {
         logger.info(`Loaded ${this.tokenList.length} tokens for ethereum`);
         // Build token map for faster lookups
+        this.tokenMap = {}; // Clear the map before rebuilding
         this.tokenList.forEach(
           (token: TokenInfo) => (this.tokenMap[token.symbol] = token),
         );
